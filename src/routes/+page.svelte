@@ -1,7 +1,13 @@
 <script lang="ts">
-	import { onMount } from "svelte";
+  import { Button } from 'flowbite-svelte';
+  import { onMount } from 'svelte';
+  // omit validator for now:
+  // import { validator } from '@felte/validator-yup';
+  // import * as yup from 'yup';
 
-  let rootserver = $state('https://bmlt.wszf.org/main_server/');
+  const defaultRootServerURL = 'https://bmlt.wszf.org/main_server/'
+  let rootServerURL = $state(defaultRootServerURL);
+  let savedRootServerURL = $state(defaultRootServerURL);
   let operation = $state('');
   let serverInfo: {langs: string, nativeLang: string}[] | undefined = $state();
   let serviceBodies: {name: string, id: string}[] | undefined = $state();
@@ -13,20 +19,25 @@
   let showAllFormats: boolean = $state(false);
 
   let parameters = $derived(computeParameters());
-  let response_url = $derived(rootserver + 'client_interface/json/?switcher=' + operation + parameters);
+  let responseURL = $derived(savedRootServerURL + 'client_interface/json/?switcher=' + operation + parameters);
 
   const allLanguages: Record<string,string> = { 'de': 'Deutsch', 'dk': 'Dansk', 'en': 'English', 'es': 'Español',
     'fa': 'فارسی', 'fr': 'Français', 'it': 'Italiano', 'pl': 'Polskie', 'pt': 'Português', 'ru': 'Русский', 'sv': 'Svenska'
   };
 
+  async function updateRootServerURL() {
+    savedRootServerURL = rootServerURL;
+    getData();
+  }
+
   // Get data from the server that will be needed for building some of the queries (just get it all for now).
   // This can be called from onMount, because the root server URL is hardwired.
   async function getData() {
-    const serverInfoResponse = await fetch(rootserver + 'client_interface/json/?switcher=GetServerInfo');
+    const serverInfoResponse = await fetch(rootServerURL + 'client_interface/json/?switcher=GetServerInfo');
     serverInfo = (await serverInfoResponse.json());
     langs = serverInfo?.[0].langs.split(',');
     nativeLang = serverInfo?.[0].nativeLang;
-    const serviceBodiesResponse = await fetch(rootserver + 'client_interface/json/?switcher=GetServiceBodies');
+    const serviceBodiesResponse = await fetch(rootServerURL + 'client_interface/json/?switcher=GetServiceBodies');
     serviceBodies = await serviceBodiesResponse.json();
     serviceBodies?.sort((a, b) => a.name.localeCompare(b.name));
   }
@@ -68,19 +79,24 @@
 
 <p>Response URL:
   {#if operation}
-    <a href={response_url} target="_blank"
-       class="font-medium text-blue-600 underline dark:text-blue-500 hover:no-underline">{response_url}</a>
+    <a href={responseURL} target="_blank"
+       class="font-medium text-blue-600 underline dark:text-blue-500 hover:no-underline">{responseURL}</a>
   {:else}
     [no operation selected]
   {/if}
 </p>
 
+
+<Button disabled={savedRootServerURL === rootServerURL} on:click={updateRootServerURL} >
+  Update root server URL
+</Button>
+
 <form class="w-3/12 mb-4">
-  <label for="rootserver" class="block mt-6 text-sm font-medium text-gray-900 dark:text-white">Root server URL:</label>
-  <input type="url" id="rootserver" class="bg-gray-50 border border-gray-300 text-gray-900 text-sm rounded-lg
+  <label for="rootServerURL" class="block mt-6 text-sm font-medium text-gray-900 dark:text-white">Root server URL:</label>
+  <input type="url" id="rootServerURL" class="bg-gray-50 border border-gray-300 text-gray-900 text-sm rounded-lg
     focus:ring-blue-500 focus:border-blue-500 block w-full p-2.5 dark:bg-gray-700 dark:border-gray-600
     dark:placeholder-gray-400 dark:text-white dark:focus:ring-blue-500 dark:focus:border-blue-500"
-    required bind:value={rootserver} />
+    required bind:value={rootServerURL} />
 
   <label for="operation" class="block mt-6 text-sm font-medium text-gray-900 dark:text-white">Operation:</label>
   <select
