@@ -1,18 +1,19 @@
 <script lang="ts">
-  import { Button } from 'flowbite-svelte';
+  import { Button, Helper } from 'flowbite-svelte';
   import { onMount } from 'svelte';
-  // omit validator for now:
-  // import { validator } from '@felte/validator-yup';
-  // import * as yup from 'yup';
 
+  // defaultRootServerURL can also be '' (that works)
+  const defaultRootServerURL = 'https://bmlt.wszf.org/main_server/';
   const allLanguages: Record<string,string> = { 'de': 'Deutsch', 'dk': 'Dansk', 'en': 'English', 'es': 'Español',
     'fa': 'فارسی', 'fr': 'Français', 'it': 'Italiano', 'pl': 'Polskie', 'pt': 'Português', 'ru': 'Русский', 'sv': 'Svenska'
   };
-  const defaultRootServerURL = 'https://bmlt.wszf.org/main_server/';
 
   // state that is separate from a particular operation
+  // rootServerUrl is what gets typed in the URL textbox
   let rootServerURL = $state(defaultRootServerURL);
+  // the savedRootServerURL will always end in a / (added if necessary to the rootServerURL)
   let savedRootServerURL = $state(defaultRootServerURL);
+  let serverError = $state();
   let operation = $state();
   let serverInfo: {langs: string, nativeLang: string}[] | undefined = $state();
   let serviceBodies: {name: string, id: string}[] | undefined = $state();
@@ -22,7 +23,7 @@
 
   // state for response URL
   let parameters = $derived(computeParameters());
-  let responseURL = $derived(savedRootServerURL + 'client_interface/json/?switcher=' + operation + parameters);
+  let responseURL = $derived(savedRootServerURL === '' || serverError ? '' : savedRootServerURL + 'client_interface/json/?switcher=' + operation + parameters);
 
   // state for Get Formats operation
   let formatLanguage: string | undefined = $state();
@@ -35,7 +36,8 @@
   let nawsDumpServiceBodyId = $state();
 
   async function updateRootServerURL() {
-    savedRootServerURL = rootServerURL;
+    const s = rootServerURL.trim();
+    savedRootServerURL = s + (s === '' || s.endsWith('/') ? '' : '/');
     // reset state that won't be updated by getData();
     // this will be 'operation' itself, and also state for a particular operation
     operation = 'GetServiceBodies';
@@ -43,22 +45,41 @@
     showAllFormats = false;
     keyForGetFieldValues = undefined;
     nawsDumpServiceBodyId = undefined;
-    await getData();
+    await getAllData();
+  }
+
+  async function getData(operation: string) {
+    const response = await fetch(savedRootServerURL + 'client_interface/json/?switcher=' + operation);
+    return response.json();
   }
 
   // Get data from the server that will be needed for building some of the queries.  Just get it all for now - later we
   // could only get the data if it's needed for a particular operation.
-  async function getData() {
-    const serverInfoResponse = await fetch(rootServerURL + 'client_interface/json/?switcher=GetServerInfo');
-    serverInfo = (await serverInfoResponse.json());
-    langs = serverInfo?.[0].langs.split(',');
-    nativeLang = serverInfo?.[0].nativeLang;
-    const serviceBodiesResponse = await fetch(rootServerURL + 'client_interface/json/?switcher=GetServiceBodies');
-    serviceBodies = await serviceBodiesResponse.json();
-    serviceBodies?.sort((a, b) => a.name.localeCompare(b.name));
-    const availableFieldsResponse = await fetch(rootServerURL + 'client_interface/json/?switcher=GetFieldKeys');
-    availableFields = await availableFieldsResponse.json();
-    availableFields?.sort((a, b) => a.description.localeCompare(b.description));
+  async function getAllData() {
+    if (savedRootServerURL === '') {
+      serverInfo = undefined;
+      langs = undefined;
+      nativeLang = undefined;
+      serviceBodies = [];
+      availableFields = [];
+    } else {
+      try {
+        serverInfo = await getData('GetServerInfo');
+        langs = serverInfo?.[0].langs.split(',');
+        nativeLang = serverInfo?.[0].nativeLang;
+        serviceBodies = await getData('GetServiceBodies');
+        serviceBodies?.sort((a, b) => a.name.localeCompare(b.name));
+        availableFields = await getData('GetFieldKeys');
+        availableFields?.sort((a, b) => a.description.localeCompare(b.description));
+      } catch (error) {
+        serverError = 'Server error -- ' + error;
+        serverInfo = undefined;
+        langs = undefined;
+        nativeLang = undefined;
+        serviceBodies = undefined;
+        availableFields = undefined;
+      }
+    }
   }
 
   function computeParameters() {
@@ -81,7 +102,7 @@
     }
   }
 
-  onMount(getData);
+  onMount(getAllData);
 
 </script>
 
@@ -92,27 +113,31 @@
     later also be linked with the BMLT root server.
 </p>
 
-<p>
-  Response URL:
-  <a href={responseURL} target="_blank"
-    class="font-medium text-blue-600 underline dark:text-blue-500 hover:no-underline">{responseURL}</a>
-</p>
-
-
-
+<label for="responseURL" class="block mt-6 text-sm font-medium text-gray-900 dark:text-white">Response URL:</label>
+<output id="responseURL">
+  {#if responseURL}
+    <a href={responseURL} target="_blank"
+      class="font-medium text-blue-600 underline dark:text-blue-500 hover:no-underline">{responseURL}</a>
+  {/if}
+</output>
 
 <form class="w-3/12 mb-4">
   <label for="rootServerURL" class="block mt-6 text-sm font-medium text-gray-900 dark:text-white">Root server URL:</label>
   <input type="url" id="rootServerURL" class="bg-gray-50 border border-gray-300 text-gray-900 text-sm rounded-lg
     focus:ring-blue-500 focus:border-blue-500 block w-full p-2.5 dark:bg-gray-700 dark:border-gray-600
     dark:placeholder-gray-400 dark:text-white dark:focus:ring-blue-500 dark:focus:border-blue-500"
-    required bind:value={rootServerURL} />
+    placeholder="enter root server URL" required bind:value={rootServerURL} />
     <Button disabled={savedRootServerURL === rootServerURL} on:click={updateRootServerURL}
-    class="bg-gray-50 border border-gray-300 text-gray-900 text-sm rounded-lg
+    class="bg-blue-400! border border-gray-300 text-gray-900 text-sm rounded-lg
     focus:ring-blue-500 focus:border-blue-500 block p-2.5 dark:bg-gray-700 dark:border-gray-600
     dark:placeholder-gray-400 dark:text-white dark:focus:ring-blue-500 dark:focus:border-blue-500">
       Update root server URL
     </Button>
+    <Helper class="bg-red-500!">
+      {#if serverError}
+        {serverError}
+      {/if}
+    </Helper>
 
   <label for="operation" class="block mt-6 text-sm font-medium text-gray-900 dark:text-white">Operation:</label>
   <select
